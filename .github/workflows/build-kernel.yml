@@ -1,0 +1,93 @@
+name: Build gta4l kernel (stock)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            dwarves python3 rsync cpio kmod libncurses-dev zip curl \
+            binutils-aarch64-linux-gnu
+
+      # Uses the same Clang your device's /proc/config.gz says it was built
+      # with (AOSP prebuilt clang-r563880c, Clang 21). This is a normal
+      # published AOSP toolchain tarball, fetched straight from its source repo.
+      - name: Fetch Clang toolchain
+        run: |
+          mkdir -p clang
+          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r563880c.tar.gz" \
+            | tar -xz -C clang
+          echo "$GITHUB_WORKSPACE/clang/bin" >> "$GITHUB_PATH"
+
+      - name: Merge defconfig fragments
+        run: |
+          export ARCH=arm64
+          export CC=clang
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          mkdir -p out
+          scripts/kconfig/merge_config.sh -O out \
+            arch/arm64/configs/vendor/bengal-perf_defconfig \
+            arch/arm64/configs/vendor/gta4l-common.config
+
+      - name: Build kernel
+        run: |
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make -j"$(nproc)" O=out ARCH=arm64 \
+            LLVM=1 LLVM_IAS=1 CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            Image.gz-dtb dtbo.img || \
+          make -j"$(nproc)" O=out ARCH=arm64 \
+            LLVM=1 LLVM_IAS=1 CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu-
+
+      - name: Show build output
+        run: ls -lah out/arch/arm64/boot/ || true
+
+      - name: Prepare AnyKernel3 zip
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 anykernel
+          rm -rf anykernel/.git anykernel/README.md anykernel/ramdisk
+          for f in out/arch/arm64/boot/Image.gz-dtb \
+                   out/arch/arm64/boot/Image.gz \
+                   out/arch/arm64/boot/Image; do
+            [ -f "$f" ] && cp "$f" anykernel/ && break
+          done
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img anykernel/
+
+      - name: Set device match in anykernel.sh
+        run: |
+          cd anykernel
+          sed -i 's/^kernel\.string=.*/kernel.string=gta4l Stock Kernel by hassansody33/' anykernel.sh
+          sed -i 's/^device\.name1=.*/device.name1=gta4l/' anykernel.sh
+          sed -i 's/^device\.name2=.*/device.name2=/' anykernel.sh
+          sed -i 's/^device\.name3=.*/device.name3=/' anykernel.sh
+
+      - name: Upload AnyKernel3 zip
+        run: |
+          cd anykernel
+          zip -r9 ../gta4l-kernel-stock.zip . -x ".git*"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gta4l-kernel-stock
+          path: gta4l-kernel-stock.zip
