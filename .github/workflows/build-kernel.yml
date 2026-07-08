@@ -19,7 +19,7 @@ jobs:
           sudo apt-get install -y \
             build-essential bc bison flex libssl-dev libelf-dev \
             dwarves python3 rsync cpio kmod libncurses-dev zip curl \
-            binutils-aarch64-linux-gnu
+            binutils-aarch64-linux-gnu device-tree-compiler
 
       # WeebX-Clang: a community-maintained LLVM toolchain built specifically
       # for Android kernel compilation (LTO + CFI capable), distributed as a
@@ -44,6 +44,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           export CLANG_TRIPLE=aarch64-linux-gnu-
+          export DTC_EXT=$(which dtc)
           mkdir -p out
           scripts/kconfig/merge_config.sh -O out \
             arch/arm64/configs/vendor/bengal-perf_defconfig \
@@ -52,17 +53,20 @@ jobs:
       - name: Build kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export DTC_EXT=$(which dtc)
           make -j"$(nproc)" O=out ARCH=arm64 \
             LLVM=1 LLVM_IAS=1 CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
+            DTC_EXT="$DTC_EXT" \
             Image.gz-dtb dtbo.img || \
           make -j"$(nproc)" O=out ARCH=arm64 \
             LLVM=1 LLVM_IAS=1 CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu-
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            DTC_EXT="$DTC_EXT"
 
       - name: Show build output
         run: ls -lah out/arch/arm64/boot/ || true
