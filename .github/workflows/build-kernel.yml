@@ -21,14 +21,18 @@ jobs:
             dwarves python3 rsync cpio kmod libncurses-dev zip curl \
             binutils-aarch64-linux-gnu
 
-      # Uses the same Clang your device's /proc/config.gz says it was built
-      # with (AOSP prebuilt clang-r563880c, Clang 21). This is a normal
-      # published AOSP toolchain tarball, fetched straight from its source repo.
-      - name: Fetch Clang toolchain
+      # WeebX-Clang: a community-maintained LLVM toolchain built specifically
+      # for Android kernel compilation (LTO + CFI capable), distributed as a
+      # small direct-download tarball. Google's own prebuilts repo prunes
+      # older clang builds over time, which is why fetching an exact old
+      # build id from there is unreliable for CI.
+      - name: Fetch Clang toolchain (WeebX-Clang)
         run: |
           mkdir -p clang
-          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r563880c.tar.gz" \
-            | tar -xz -C clang
+          curl -s -L https://raw.githubusercontent.com/XSans0/WeebX-Clang/main/main/link.txt -o link.txt
+          cat link.txt
+          curl -L "$(cat link.txt)" -o weebx-clang.tar.gz
+          tar -xf weebx-clang.tar.gz -C clang
           echo "$GITHUB_WORKSPACE/clang/bin" >> "$GITHUB_PATH"
 
       - name: Merge defconfig fragments
